@@ -9,9 +9,33 @@ import pytz
 
 
 def fit2csv(fit_path, locale, detect_gaps):
-    """Based on Github package https://github.com/dtcooper/python-fitparse"""
+    """Based on Github package https://github.com/dtcooper/python-fitparse
+
+    Extracts whatever fields are provided in each FIT record item. The units
+    for some of these are not particularly intuitive, and in some cases are
+    provided in each field's ``'units'`` key. A summary is included below
+        * timestamp: UTC datetime.datetime
+        * position_lat: int
+        * position_long: int
+        * distance: meters
+        * speed: int representing pace/mile as mmss (i.e. 0630 = 6m 30s mile)
+        * enhanced_speed: float (simply speed/1000)
+        * heart_rate: beats per minute (BPM)
+        * cadence: revolutions per minute (RPM)
+
+    :param str fit_path: Full path to .fit file on disk
+    :param str locale: Timezone label accepted by ``pytz``
+    :param bool detect_gaps: Whether to print a summary of gaps in timeseries
+    :return None: Saves to CSV
+    """
 
     def utc2local(naive_utc, local):
+        """Adjust UTC timestamp to local
+
+        :param datetime.datetime naive_utc: Starting point for conversion
+        :param pytz.timezone local: To convert to
+        :return datetime.datetime:
+        """
         return pytz.utc.localize(naive_utc).astimezone(local)
 
     # Load FIT data
