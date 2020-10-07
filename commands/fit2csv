@@ -16,17 +16,18 @@ def fit2csv(fit_path, locale, detect_gaps):
     # Load FIT data
     fitfile = FitFile(fit_path)
     records = [r for r in fitfile.get_messages('record', as_dict=True)]
+    fields_stoi = {f['name']: i for i, f in enumerate(records[0]['fields'])}
 
     # Localize FIT timestamps and determine activity offset
     tz = pytz.timezone(locale)
-    start_utc = records[0]['fields'][0]['value']
+    start_utc = records[0]['fields'][fields_stoi['timestamp']]['value']
     start_local = utc2local(start_utc, tz)
     csv_path = f'{datetime.strftime(start_local, "%Y%m%d")}.csv'
 
     # Parse into CSV
-    rows = [(utc2local(r['fields'][0]['value'], tz),
+    rows = [(utc2local(r['fields'][fields_stoi['timestamp']]['value'], tz),
              timedelta(seconds=i),
-             r['fields'][-2]['value'])
+             r['fields'][fields_stoi['heart_rate']]['value'])
             for i, r in enumerate(records)]
     df = pd.DataFrame(rows, columns=['local', 'activity', 'heart_rate'])
     df.to_csv(csv_path, index=False)
