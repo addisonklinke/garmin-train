@@ -47,10 +47,10 @@ def rolling_aet(csv_path, end_time, start_time, window, frequency, raw):
     while start_idx + num_required_rows < len(relevant):
         first_half = slice(start_idx, start_idx + window_seconds)
         second_half = slice(start_idx + window_seconds, start_idx + 2*window_seconds)
-        first_avg = df[col][first_half].mean()
-        second_avg = df[col][second_half].mean()
+        first_avg = relevant[col][first_half].mean()
+        second_avg = relevant[col][second_half].mean()
         stats['drift'].append((second_avg - first_avg) / first_avg * 100)
-        stats['aet'].append(df.heart_rate[first_half].mean())
+        stats['aet'].append(relevant.heart_rate[first_half].mean())
         start_idx += frequency
     return stats
 
