@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 
 from argparse import ArgumentParser, ArgumentTypeError
-from datetime import datetime, date, time
+from datetime import datetime, date
 from statistics import mean, stdev
 import pandas as pd
 
@@ -21,7 +21,7 @@ def hms_str2delta(value):
     return delta
 
 
-def rolling_aet(csv_path, end_time, start_time, window, frequency):
+def rolling_aet(csv_path, end_time, start_time, window, frequency, raw):
     """See argparse descriptions below"""
 
     # Load and validate data
@@ -33,6 +33,7 @@ def rolling_aet(csv_path, end_time, start_time, window, frequency):
 
     # Add time-base index and filter range
     df.set_index(pd.TimedeltaIndex(df.activity), inplace=True)
+    df['pace_hr'] = df.apply(lambda row: speed_in_seconds(row.speed) / row.heart_rate, axis=1)
     relevant = df[(df.index > start_time) & (df.index < end_time)]
     if len(relevant) == 0:
         raise RuntimeError(f'No data found between {start_time}-{end_time}')
@@ -42,13 +43,28 @@ def rolling_aet(csv_path, end_time, start_time, window, frequency):
     stats = {'drift': [], 'aet': []}
     window_seconds = window * 60
     num_required_rows = window_seconds * 2
+    col = 'heart_rate' if raw else 'pace_hr'
     while start_idx + num_required_rows < len(relevant):
-        first_half = mean(df.heart_rate[start_idx:start_idx + window_seconds])
-        second_half = mean(df.heart_rate[start_idx + window_seconds:start_idx + 2*window_seconds])
-        stats['drift'].append((second_half - first_half) / first_half * 100)
-        stats['aet'].append(first_half)
+        first_half = slice(start_idx, start_idx + window_seconds)
+        second_half = slice(start_idx + window_seconds, start_idx + 2*window_seconds)
+        first_avg = df[col][first_half].mean()
+        second_avg = df[col][second_half].mean()
+        stats['drift'].append((second_avg - first_avg) / first_avg * 100)
+        stats['aet'].append(df.heart_rate[first_half].mean())
         start_idx += frequency
     return stats
+
+
+def speed_in_seconds(speed):
+    """Convert Garmin speed format to pure seconds
+
+    :param int speed: Mile pace from Garmin FIT file (mmss format)
+    :return int: Mile pace in seconds
+    """
+    speed = str(speed)
+    minutes = int(speed[:2])
+    seconds = int(speed[2:])
+    return minutes*60 + seconds
 
 
 if __name__ == '__main__':
@@ -57,12 +73,13 @@ if __name__ == '__main__':
     parser.add_argument('csv_path', type=str, help='path to heart rate CSV timeseries')
     parser.add_argument('-e', '--end_time', type=hms_str2delta, required=True, help='timestamp to stop rolling at')
     parser.add_argument('-f', '--frequency', type=int, default=1, help='number of seconds to slide window each time')
+    parser.add_argument('-r', '--raw', action='store_true', help='use raw heart rate instead of pace:HR')
     parser.add_argument('-s', '--start_time', type=hms_str2delta, required=True, help='timestamp to begin rolling from')
     parser.add_argument('-w', '--window', type=int, default=30, help='number of minutes for each half of the test')
     args = parser.parse_args()
 
     stats = rolling_aet(**vars(args))
-    print(f'Results from {len(stats["drift"])} windows')
+    print(f'Results from {len(stats["drift"]):,} windows using {"raw HR" if args.raw else "pace/HR"}')
     avg_drift = mean(stats['drift'])
     print(f'Successfull test: {0 < avg_drift < 5} ({avg_drift:+.2f}% drift)')
     print(f'AeT: {mean(stats["aet"]):.2f} +/- {stdev(stats["aet"]):.2f} bpm')
