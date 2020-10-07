@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 
 from argparse import ArgumentParser
+from collections import OrderedDict
 from datetime import datetime, timedelta
 from fitparse import FitFile
 import pandas as pd
@@ -16,30 +17,34 @@ def fit2csv(fit_path, locale, detect_gaps):
     # Load FIT data
     fitfile = FitFile(fit_path)
     records = [r for r in fitfile.get_messages('record', as_dict=True)]
-    fields_stoi = {f['name']: i for i, f in enumerate(records[0]['fields'])}
+    fields_stoi = OrderedDict({f['name']: i for i, f in enumerate(records[0]['fields'])})
+    if 'timestamp' not in fields_stoi:
+        raise RuntimeError(f'Records do not contain timestamps')
 
-    # Localize FIT timestamps and determine activity offset
+    # Convert FIT timestamps from UTC to user's locale
+    # Use the starting date to name the CSV export
     tz = pytz.timezone(locale)
-    start_utc = records[0]['fields'][fields_stoi['timestamp']]['value']
-    start_local = utc2local(start_utc, tz)
+    for r in records:
+        local_ts = r['fields'][fields_stoi['timestamp']]['value']
+        r['fields'][fields_stoi['timestamp']]['value'] = utc2local(local_ts, tz)
+    start_local = records[0]['fields'][fields_stoi['timestamp']]['value']
     csv_path = f'{datetime.strftime(start_local, "%Y%m%d")}.csv'
 
     # Parse into CSV
-    rows = [(utc2local(r['fields'][fields_stoi['timestamp']]['value'], tz),
-             timedelta(seconds=i),
-             r['fields'][fields_stoi['heart_rate']]['value'])
-            for i, r in enumerate(records)]
-    df = pd.DataFrame(rows, columns=['local', 'activity', 'heart_rate'])
+    # Extract all field values for each record and add an activity time counter
+    rows = [[timedelta(seconds=s)] + [r['fields'][idx]['value'] for idx in fields_stoi.values()]
+            for s, r in enumerate(records)]
+    df = pd.DataFrame(rows, columns=['activity'] + list(fields_stoi.keys()))
     df.to_csv(csv_path, index=False)
 
     # Check for timeseries gaps if requested
     if detect_gaps:
-        deltas = df.diff().local[1:]
+        deltas = df.diff().timestamp[1:]
         gaps = deltas[deltas > timedelta(seconds=1)]
         if len(gaps) > 0:
             print(f'Found {len(gaps)} gaps in heart rate data')
         for i, g in gaps.iteritems():
-            gap_start = df.local[i - 1]
+            gap_start = df.timestamp[i - 1]
             print(f'\t* {datetime.strftime(gap_start, "%I:%M:%S %p")}: {str(g.to_pytimedelta())}'.expandtabs(4))
 
 
