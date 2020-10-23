@@ -1,3 +1,4 @@
 fitparse==1.1.0
 pandas==1.0.1
 pytz==2019.3
+xmltodict==0.12.0
