@@ -3,88 +3,12 @@
 from argparse import ArgumentParser
 from collections import OrderedDict
 from datetime import datetime, timedelta
+from functools import reduce
+import os
 from fitparse import FitFile
 import pandas as pd
 import pytz
 import xmltodict
-
-
-def fit2csv(fit_path, locale, detect_gaps):
-    """Convert FIT fields to CSV format
-
-    Based on Github package https://github.com/dtcooper/python-fitparse
-
-    Extracts whatever fields are provided in each FIT record item. The units
-    for some of these are not particularly intuitive, and in some cases are
-    provided in each field's ``'units'`` key. A summary is included below
-        * timestamp: UTC datetime.datetime
-        * position_lat: int
-        * position_long: int
-        * distance: meters
-        * speed: int representing pace/mile as mmss (i.e. 0630 = 6m 30s mile)
-        * enhanced_speed: float (simply speed/1000)
-        * heart_rate: beats per minute (BPM)
-        * cadence: revolutions per minute (RPM)
-
-    :param str fit_path: Full path to .fit file on disk
-    :param str locale: Timezone label accepted by ``pytz``
-    :param bool detect_gaps: Whether to print a summary of gaps in timeseries
-    :return pd.DataFrame df: In tabular CSV format
-    """
-
-    # Load FIT data
-    fitfile = FitFile(fit_path)
-    records = [r for r in fitfile.get_messages('record', as_dict=True)]
-    fields_stoi = OrderedDict({f['name']: i for i, f in enumerate(records[0]['fields'])})
-    if 'timestamp' not in fields_stoi:
-        raise RuntimeError(f'Records do not contain timestamps')
-
-    # Convert FIT timestamps from UTC to user's locale
-    tz = pytz.timezone(locale)
-    for r in records:
-        local_ts = r['fields'][fields_stoi['timestamp']]['value']
-        r['fields'][fields_stoi['timestamp']]['value'] = utc2local(local_ts, tz)
-
-    # Parse into CSV
-    # Extract all field values for each record and add an activity time counter
-    rows = [[timedelta(seconds=s)] + [r['fields'][idx]['value'] for idx in fields_stoi.values()]
-            for s, r in enumerate(records)]
-    df = pd.DataFrame(rows, columns=['activity'] + list(fields_stoi.keys()))
-
-    # Check for timeseries gaps if requested
-    if detect_gaps:
-        deltas = df.diff().timestamp[1:]
-        gaps = deltas[deltas > timedelta(seconds=1)]
-        if len(gaps) > 0:
-            print(f'Found {len(gaps)} gaps in heart rate data')
-        for i, g in gaps.iteritems():
-            gap_start = df.timestamp[i - 1]
-            print(f'\t* {datetime.strftime(gap_start, "%I:%M:%S %p")}: {str(g.to_pytimedelta())}'.expandtabs(4))
-    return df
-
-
-def gpx2csv(gpx_path, locale):
-    """Convert GPX elevation data to CSV format
-
-    :param str gpx_path: Full path to .gpx file on disk
-    :param str locale: Timezone label accepted by ``pytz``
-    :return pd.Dataframe: In tabular CSV format
-    """
-
-    # Extract points timeseries
-    with open(gpx_path, 'r') as f:
-        raw = xmltodict.parse(f.read(), xml_attribs=False)
-    try:
-        points = raw['gpx']['trk']['trkseg']['trkpt']
-    except KeyError as e:
-        raise RuntimeError('GPX structure missing required keys: gpx, trk, trkseg, and trkpt') from e
-
-    # Form rows of local timestamps and elevation
-    tz = pytz.timezone(locale)
-    rows = [{'timestamp': utc2local(datetime.strptime(p['time'].split('.')[0], '%Y-%m-%dT%H:%M:%S'), tz),
-             'elevation': float(p['ele'])}
-            for p in points]
-    return pd.DataFrame(rows)
 
 
 def utc2local(naive_utc, local):
@@ -97,25 +21,122 @@ def utc2local(naive_utc, local):
     return pytz.utc.localize(naive_utc).astimezone(local)
 
 
+class Converter:
+
+    def __init__(self, locale, detect_gaps=False):
+        """Initialize workout file converter
+
+        :param str locale: Timezone label accepted by ``pytz``
+        :param bool detect_gaps: Whether to print a summary of gaps in timeseries
+        """
+        self.tz = pytz.timezone(locale)
+        self.detect_gaps = detect_gaps
+
+    def __call__(self, activity_files):
+        """Pass files to appropriate converter and merge results
+
+        Gaps only need to be printed once for the combined data since they
+        will be the same for all versions of the activity. To support a new
+        file format, create a ``*2csv()`` method that accepts a singular
+        filepath as its argument
+        """
+
+        # Convert individual formats
+        parsed = []
+        for i, path in enumerate(activity_files):
+            filename = os.path.basename(path)
+            file_type = filename.split('.')[-1]
+            func = getattr(self, file_type + '2csv', None)
+            msg = f'Processing {i + 1}/{len(activity_files)}: '
+            if func is not None:
+                msg += filename
+                parsed.append(func(path))
+            else:
+                msg += f'No conversion for file type .{file_type}'
+            print(msg)
+
+        # Merge by timestamp and check gaps
+        combined = reduce(lambda x, y: pd.merge(x, y, on='timestamp'), parsed)
+        deltas = combined.diff().timestamp[1:]
+        gaps = deltas[deltas > timedelta(seconds=1)]
+        if len(gaps) > 0:
+            print(f'Found {len(gaps)} gaps in timeseries data')
+        for i, g in gaps.iteritems():
+            gap_start = combined.timestamp[i - 1]
+            print(f'\t* {datetime.strftime(gap_start, "%I:%M:%S %p")}: {str(g.to_pytimedelta())}'.expandtabs(4))
+        return combined
+
+    def fit2csv(self, fit_path):
+        """Convert FIT fields to CSV format
+
+        Based on Github package https://github.com/dtcooper/python-fitparse
+
+        Extracts whatever fields are provided in each FIT record item. The units
+        for some of these are not particularly intuitive, and in some cases are
+        provided in each field's ``'units'`` key. A summary is included below
+            * timestamp: UTC datetime.datetime
+            * position_lat: int
+            * position_long: int
+            * distance: meters
+            * speed: int representing pace/mile as mmss (i.e. 0630 = 6m 30s mile)
+            * enhanced_speed: float (simply speed/1000)
+            * heart_rate: beats per minute (BPM)
+            * cadence: revolutions per minute (RPM)
+
+        :param str fit_path: Full path to .fit file on disk
+        :return pd.DataFrame: In tabular CSV format
+        """
+
+        # Load FIT data
+        fitfile = FitFile(fit_path)
+        records = [r for r in fitfile.get_messages('record', as_dict=True)]
+        fields_stoi = OrderedDict({f['name']: i for i, f in enumerate(records[0]['fields'])})
+        if 'timestamp' not in fields_stoi:
+            raise RuntimeError(f'Records do not contain timestamps')
+
+        # Convert FIT timestamps from UTC to user's locale
+        for r in records:
+            local_ts = r['fields'][fields_stoi['timestamp']]['value']
+            r['fields'][fields_stoi['timestamp']]['value'] = utc2local(local_ts, self.tz)
+
+        # Extract all field values for each record to CSV and add an activity time counter
+        rows = [[timedelta(seconds=s)] + [r['fields'][idx]['value'] for idx in fields_stoi.values()]
+                for s, r in enumerate(records)]
+        return pd.DataFrame(rows, columns=['activity'] + list(fields_stoi.keys()))
+
+    def gpx2csv(self, gpx_path):
+        """Convert GPX elevation data to CSV format
+
+        :param str gpx_path: Full path to .gpx file on disk
+        :return pd.Dataframe: With elevation in meters
+        """
+
+        # Extract points timeseries
+        with open(gpx_path, 'r') as f:
+            raw = xmltodict.parse(f.read(), xml_attribs=False)
+        try:
+            points = raw['gpx']['trk']['trkseg']['trkpt']
+        except KeyError as e:
+            raise RuntimeError('GPX structure missing required keys: gpx, trk, trkseg, and trkpt') from e
+
+        # Form rows of local timestamps and elevation
+        rows = [{'timestamp': utc2local(datetime.strptime(p['time'].split('.')[0], '%Y-%m-%dT%H:%M:%S'), self.tz),
+                 'elevation': float(p['ele'])}
+                for p in points]
+        return pd.DataFrame(rows)
+
+
 if __name__ == '__main__':
 
     parser = ArgumentParser(description='Extract heart rate data from Garmin fit file')
-    parser.add_argument('activity_files', type=str, nargs='+', help='.fit required with optional .gpx')
-    parser.add_argument('-g', '--gaps', action='store_true', help='print any timeseries gaps > 1s')
+    parser.add_argument('activity_files', type=str, nargs='+', help='currently supports .fit and .gpx')
+    parser.add_argument('-g', '--detect_gaps', action='store_true', help='print any timeseries gaps > 1s')
     parser.add_argument('-l', '--locale', type=str, default='US/Mountain', help='location of activity')
     args = parser.parse_args()
 
     # Combine data from the provided activity files
-    fit_path = next((f for f in args.activity_files if f.endswith('.fit')), None)
-    gpx_path = next((f for f in args.activity_files if f.endswith('.gpx')), None)
-    if fit_path is None:
-        raise ValueError('Activity files must include a .fit path')
-    fit = fit2csv(fit_path, args.locale, args.gaps)
-    if gpx_path is not None:
-        gpx = gpx2csv(gpx_path, args.locale)
-        df = pd.merge(fit, gpx, on='timestamp')
-    else:
-        df = fit
+    converter = Converter(args.locale, args.detect_gaps)
+    df = converter(args.activity_files)
 
     # Use the starting date to name the CSV export
     start_local = df['timestamp'][0]
