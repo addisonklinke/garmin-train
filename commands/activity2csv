@@ -4,7 +4,9 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from collections import OrderedDict
 from datetime import datetime, timedelta
 from functools import reduce
+from io import BytesIO
 import os
+from zipfile import ZipFile
 from fitparse import FitFile
 import pandas as pd
 import pytz
@@ -83,7 +85,7 @@ class Converter:
             * heart_rate: beats per minute (BPM)
             * cadence: revolutions per minute (RPM)
 
-        :param str fit_path: Full path to .fit file on disk
+        :param str or BytesIO fit_path: Full path to .fit file on disk
         :return pd.DataFrame: In tabular CSV format
         """
 
@@ -125,13 +127,28 @@ class Converter:
                 for p in points]
         return pd.DataFrame(rows)
 
+    def zip2csv(self, zip_path):
+        """Automate extration of .fit file
+
+        The initializer for ``fitparse.FitFile`` can accept either a filepath
+        or a ``BytesIO`` object, so we can pass the content of the zip archive
+        directly and it will be handled by ``fitparse.utils.fileish_open``
+        """
+        with ZipFile(zip_path, 'r') as f:
+            all_files = f.namelist()
+            fit_file = next((file for file in all_files if file.endswith('.fit')), None)
+            if fit_file is None:
+                raise RuntimeError('zip archive does not contain a .fit file')
+            fileish = BytesIO(f.read(fit_file))
+        return self.fit2csv(fileish)
+
 
 if __name__ == '__main__':
 
     parser = ArgumentParser(
         description='Extract activity data from Garmin workout files',
         formatter_class=lambda prog: ArgumentDefaultsHelpFormatter(prog, width=120, max_help_position=50))
-    parser.add_argument('activity_files', type=str, nargs='+', help='currently supports .fit and .gpx')
+    parser.add_argument('activity_files', type=str, nargs='+', help='currently supports .fit/.zip and .gpx')
     parser.add_argument('-g', '--detect_gaps', action='store_true', help='print any timeseries gaps > 1s')
     parser.add_argument('-l', '--locale', type=str, required=True, help='location of activity, i.e. US/Pacific')
     args = parser.parse_args()
