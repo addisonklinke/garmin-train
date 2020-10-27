@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-from argparse import ArgumentParser
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from collections import OrderedDict
 from datetime import datetime, timedelta
 from functools import reduce
@@ -128,10 +128,12 @@ class Converter:
 
 if __name__ == '__main__':
 
-    parser = ArgumentParser(description='Extract heart rate data from Garmin fit file')
+    parser = ArgumentParser(
+        description='Extract activity data from Garmin workout files',
+        formatter_class=lambda prog: ArgumentDefaultsHelpFormatter(prog, width=120, max_help_position=50))
     parser.add_argument('activity_files', type=str, nargs='+', help='currently supports .fit and .gpx')
     parser.add_argument('-g', '--detect_gaps', action='store_true', help='print any timeseries gaps > 1s')
-    parser.add_argument('-l', '--locale', type=str, default='US/Mountain', help='location of activity')
+    parser.add_argument('-l', '--locale', type=str, required=True, help='location of activity, i.e. US/Pacific')
     args = parser.parse_args()
 
     # Combine data from the provided activity files
