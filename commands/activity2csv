@@ -59,13 +59,14 @@ class Converter:
 
         # Merge by timestamp and check gaps
         combined = reduce(lambda x, y: pd.merge(x, y, on='timestamp'), parsed)
-        deltas = combined.diff().timestamp[1:]
-        gaps = deltas[deltas > timedelta(seconds=1)]
-        if len(gaps) > 0:
-            print(f'Found {len(gaps)} gaps in timeseries data')
-        for i, g in gaps.iteritems():
-            gap_start = combined.timestamp[i - 1]
-            print(f'\t* {datetime.strftime(gap_start, "%I:%M:%S %p")}: {str(g.to_pytimedelta())}'.expandtabs(4))
+        if self.detect_gaps:
+            deltas = combined.diff().timestamp[1:]
+            gaps = deltas[deltas > timedelta(seconds=1)]
+            if len(gaps) > 0:
+                print(f'Found {len(gaps)} gaps in timeseries data')
+            for i, g in gaps.iteritems():
+                gap_start = datetime.strftime(combined.timestamp[i - 1], "%I:%M:%S %p")
+                print(f'\t* {gap_start}: {str(g.to_pytimedelta())}'.expandtabs(4))
         return combined
 
     def fit2csv(self, fit_path):
