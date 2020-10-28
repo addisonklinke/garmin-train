@@ -152,14 +152,20 @@ if __name__ == '__main__':
     parser.add_argument('activity_files', type=str, nargs='+', help='currently supports .fit/.zip and .gpx')
     parser.add_argument('-g', '--detect_gaps', action='store_true', help='print any timeseries gaps > 1s')
     parser.add_argument('-l', '--locale', type=str, required=True, help='location of activity, i.e. US/Pacific')
+    parser.add_argument('-n', '--name', type=str, help='activity name to append to yyyymmdd CSV format')
     args = parser.parse_args()
 
     # Combine data from the provided activity files
     converter = Converter(args.locale, args.detect_gaps)
     df = converter(args.activity_files)
 
-    # Use the starting date to name the CSV export
+    # Use the starting date (and optional name) to identity the CSV export
     start_local = df['timestamp'][0]
-    out_path = f'{datetime.strftime(start_local, "%Y%m%d")}.csv'
-    df.to_csv(out_path, index=False)
-    print(f'CSV saved to {out_path}')
+    filename = datetime.strftime(start_local, "%Y%m%d")
+    if args.name is not None:
+        filename += '-' + args.name
+    filename += '.csv'
+
+    # Write to disk
+    df.to_csv(filename, index=False)
+    print(f'CSV saved to {filename}')
