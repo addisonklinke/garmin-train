@@ -81,8 +81,8 @@ class Converter:
             * position_lat: int
             * position_long: int
             * distance: meters
-            * speed: int representing pace/mile as mmss (i.e. 0630 = 6m 30s mile)
-            * enhanced_speed: float (simply speed/1000)
+            * speed: int (1000 * enhanced_speed)
+            * enhanced_speed: float (m/s)
             * heart_rate: beats per minute (BPM)
             * cadence: revolutions per minute (RPM)
 

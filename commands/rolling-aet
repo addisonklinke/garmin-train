@@ -33,7 +33,7 @@ def rolling_aet(csv_path, end_time, start_time, window, frequency, raw):
 
     # Add time-base index and filter range
     df.set_index(pd.TimedeltaIndex(df.activity), inplace=True)
-    df['pace_hr'] = df.apply(lambda row: speed_in_seconds(row.speed) / row.heart_rate, axis=1)
+    df['pace_hr'] = df.apply(lambda row: row.speed / row.heart_rate, axis=1)
     relevant = df[(df.index > start_time) & (df.index < end_time)]
     if len(relevant) == 0:
         raise RuntimeError(f'No data found between {start_time}-{end_time}')
@@ -53,18 +53,6 @@ def rolling_aet(csv_path, end_time, start_time, window, frequency, raw):
         stats['aet'].append(relevant.heart_rate[first_half].mean())
         start_idx += frequency
     return stats
-
-
-def speed_in_seconds(speed):
-    """Convert Garmin speed format to pure seconds
-
-    :param int speed: Mile pace from Garmin FIT file (mmss format)
-    :return int: Mile pace in seconds
-    """
-    speed = str(speed)
-    minutes = int(speed[:2])
-    seconds = int(speed[2:])
-    return minutes*60 + seconds
 
 
 if __name__ == '__main__':
