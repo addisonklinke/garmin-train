@@ -60,7 +60,7 @@ class Converter:
         # Merge by timestamp and check gaps
         combined = reduce(lambda x, y: pd.merge(x, y, on='timestamp'), parsed)
         if self.detect_gaps:
-            deltas = combined.diff().timestamp[1:]
+            deltas = combined.timestamp.diff()[1:]
             gaps = deltas[deltas > timedelta(seconds=1)]
             if len(gaps) > 0:
                 print(f'Found {len(gaps)} gaps in timeseries data')
