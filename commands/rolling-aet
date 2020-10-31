@@ -10,14 +10,25 @@ from prettytable import PrettyTable
 def hms_str2delta(value):
     """Convert argparse strings to datetime.timedelta objects
 
-    :param str value: Raw command line input
+    :param str value: Raw command line input (either H:M:S or H:M)
     :return datetime.timedelta: Parsed timestamp
     :raises argparse.ArgumentTypeError: If string cannot be converted
     """
+
+    # Auto-detect timestamp format
+    num_colons = value.count(':')
+    if num_colons == 2:
+        fmt_str = '%H:%M:%S'
+    elif num_colons == 1:
+        fmt_str = '%H:%M'
+    else:
+        raise ArgumentTypeError(f'{value} does not match H:M:S or H:M formats')
+
+    # Attempt to parse
     try:
-        ts = datetime.time(datetime.strptime(value, '%H:%M:%S'))
+        ts = datetime.time(datetime.strptime(value, fmt_str))
     except ValueError:
-        raise ArgumentTypeError(f'{value} does not match H:M:S timestamp format')
+        raise ArgumentTypeError(f'Could not parse {value} to {fmt_str}')
     delta = datetime.combine(date.min, ts) - datetime.min
     return delta
 
