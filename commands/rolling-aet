@@ -49,11 +49,12 @@ def print_summary(combined):
     for method in combined:
         stats = method['stats']
         avg_drift = mean(stats['drift'])
+        spacer = '' if avg_drift < 0 else ' '
         pace_str = f'{mean(stats["pace"]):.2f} +/- {stdev(stats["pace"]):.2f} ' if len(stats['pace']) > 0 else ''
         pace_str += method['units']
         summary.add_row([
             method['name'].title(),
-            f'{avg_drift:.2f} +/- {stdev(stats["drift"]):.2f}',
+            f'{spacer}{avg_drift:.2f} +/- {stdev(stats["drift"]):.2f}',
             0 < avg_drift < 5,
             pace_str])
     print(summary)
