@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-from argparse import ArgumentParser, ArgumentTypeError
+from argparse import ArgumentParser, ArgumentTypeError, ArgumentDefaultsHelpFormatter
 from datetime import datetime, date
 from statistics import mean, stdev
 import pandas as pd
@@ -152,7 +152,9 @@ class Analyzer:
 
 if __name__ == '__main__':
 
-    parser = ArgumentParser(description='Calculate AeT drift over rolling thresholds')
+    parser = ArgumentParser(
+        description='Calculate AeT drift over rolling thresholds',
+        formatter_class=lambda prog: ArgumentDefaultsHelpFormatter(prog, width=120, max_help_position=50))
     parser.add_argument('csv_path', type=str, help='path to heart rate CSV timeseries')
     parser.add_argument('-e', '--end_time', type=hms_str2delta, required=True, help='timestamp to stop rolling at')
     parser.add_argument('-f', '--frequency', type=int, default=1, help='number of seconds to slide window each time')
