@@ -4,6 +4,7 @@ from argparse import ArgumentParser, ArgumentTypeError
 from datetime import datetime, date
 from statistics import mean, stdev
 import pandas as pd
+from prettytable import PrettyTable
 
 
 def hms_str2delta(value):
@@ -21,38 +22,121 @@ def hms_str2delta(value):
     return delta
 
 
-def rolling_aet(csv_path, end_time, start_time, window, frequency, raw):
-    """See argparse descriptions below"""
+def print_summary(combined):
+    """Summarize AeT calculations in table
 
-    # Load and validate data
-    df = pd.read_csv(csv_path)
-    required_cols = ['activity', 'heart_rate']
-    missing = [r for r in required_cols if r not in df.columns]
-    if len(missing) > 0:
-        raise RuntimeError(f'CSV missing required column(s) {", ".join(missing)}')
+    Note the AeT key of each method's ``stats`` key will be the same since they
+    all use the heart rate column. Therefore it doesn't matter which one is
+    used for the table title
 
-    # Add time-base index and filter range
-    df.set_index(pd.TimedeltaIndex(df.activity), inplace=True)
-    df['pace_hr'] = df.apply(lambda row: row.speed / row.heart_rate, axis=1)
-    relevant = df[(df.index > start_time) & (df.index < end_time)]
-    if len(relevant) == 0:
-        raise RuntimeError(f'No data found between {start_time}-{end_time}')
+    :param [dict] combined: Matching the return format of ``Analyzer.rolling_aet()``
+    :return None: Prints to console
+    """
+    summary = PrettyTable(field_names=['Method', 'Drift (%)', 'Successful', 'Pace @ AeT'])
+    raw_aet = combined[0]["stats"]["aet"]
+    summary.title = f'Results from {len(raw_aet):,} windows: AeT {mean(raw_aet):.2f} +/- {stdev(raw_aet):.2f} bpm'
+    for method in combined:
+        stats = method['stats']
+        avg_drift = mean(stats['drift'])
+        pace_str = f'{mean(stats["pace"]):.2f} +/- {stdev(stats["pace"]):.2f} ' if len(stats['pace']) > 0 else ''
+        pace_str += method['units']
+        summary.add_row([
+            method['name'].title(),
+            f'{avg_drift:.2f} +/- {stdev(stats["drift"]):.2f}',
+            0 < avg_drift < 5,
+            pace_str])
+    print(summary)
 
-    # Calculate AeT in windows and return average percent drift
-    start_idx = 0
-    stats = {'drift': [], 'aet': []}
-    window_seconds = window * 60
-    num_required_rows = window_seconds * 2
-    col = 'heart_rate' if raw else 'pace_hr'
-    while start_idx + num_required_rows < len(relevant):
-        first_half = slice(start_idx, start_idx + window_seconds)
-        second_half = slice(start_idx + window_seconds, start_idx + 2*window_seconds)
-        first_avg = relevant[col][first_half].mean()
-        second_avg = relevant[col][second_half].mean()
-        stats['drift'].append((second_avg - first_avg) / first_avg * 100)
-        stats['aet'].append(relevant.heart_rate[first_half].mean())
-        start_idx += frequency
-    return stats
+
+class Analyzer:
+
+    def __init__(self, window, frequency):
+        self.window = window
+        self.frequency = frequency
+        self.metrics = {
+            'raw': {
+                'name': 'raw',
+                'config': {
+                    'drift': 'heart_rate',
+                    'pace': None},
+                'units': 'NA'},
+            'speed': {
+                'name': 'hr/speed',
+                'config': {
+                    'drift': 'hr_pace',
+                    'pace': 'mph'},
+                'units': 'mph'},
+            'elevation': {
+               'name': 'hr/elevation',
+               'config': {
+                   'drift': 'hr_elev',
+                   'pace': 'ft_hour'},
+                'units': 'ft/hour'}}
+        self.conversions = {
+            'm/s_ft/hr': 3.28084 * 3600,
+            'm/s_mph': 3600 / 1609.34}
+
+    def extract_stats(self, relevant, drift, pace):
+        """Calculate AeT related stats using different methods
+
+        :param pd.DataFrame relevant: Subsection of the workout to analyze
+        :param str drift: Column name to calculate drift on
+        :param str pace: Column name to use for mean pace
+        :return dict stats: Values are lists with one element for each window
+        """
+
+        start_idx = 0
+        stats = {'pace': [], 'drift': [], 'aet': []}
+        window_seconds = self.window * 60
+        num_required_rows = window_seconds * 2
+        while start_idx + num_required_rows < len(relevant):
+            first_half = slice(start_idx, start_idx + window_seconds)
+            second_half = slice(start_idx + window_seconds, start_idx + 2*window_seconds)
+            first_avg = relevant[drift][first_half].mean()
+            second_avg = relevant[drift][second_half].mean()
+            stats['drift'].append((second_avg - first_avg) / first_avg * 100)
+            stats['aet'].append(relevant.heart_rate[first_half].mean())
+            if pace is not None:
+                stats['pace'].append(relevant[pace][first_half].mean())
+            start_idx += self.frequency
+        return stats
+
+    def rolling_aet(self, csv_path, start_time, end_time):
+        """See argparse descriptions below"""
+
+        # Load and validate data
+        with open(csv_path, 'r') as f:
+            columns = [c.strip() for c in f.read().splitlines()[0].split(',')]
+        required_cols = ['activity', 'heart_rate', 'timestamp']
+        missing = [r for r in required_cols if r not in columns]
+        if len(missing) > 0:
+            raise RuntimeError(f'CSV missing required column(s) {", ".join(missing)}')
+        df = pd.read_csv(csv_path, parse_dates=['activity', 'timestamp'])
+
+        # Calculate derived columns for different metrics
+        metrics = [self.metrics['raw']]
+        eps = 1e-32
+        if 'speed' in df:
+            metrics.append(self.metrics['speed'])
+            df['mph'] = df.enhanced_speed * self.conversions['m/s_mph']
+            df['hr_pace'] = df.apply(lambda row: row.heart_rate / (row.mph + eps), axis=1)
+        if 'elevation' in df:
+            metrics.append(self.metrics['elevation'])
+            df['ft_hour'] = df.elevation.diff() / df.timestamp.diff().dt.total_seconds() * self.conversions['m/s_ft/hr']
+            df['hr_elev'] = df.apply(lambda row: row.heart_rate / (row.ft_hour + eps), axis=1)
+
+        # Add time-base index and filter range
+        df.set_index(pd.TimedeltaIndex(df.activity), inplace=True)
+        relevant = df[(df.index > start_time) & (df.index < end_time)]
+        if len(relevant) == 0:
+            raise RuntimeError(f'No data found between {start_time}-{end_time}')
+
+        # Calculate AeT for each metric in windows
+        combined = []
+        for m in metrics:
+            config = m.pop('config')
+            combined.append({'stats': self.extract_stats(relevant, **config), **m})
+        return combined
 
 
 if __name__ == '__main__':
@@ -61,13 +145,10 @@ if __name__ == '__main__':
     parser.add_argument('csv_path', type=str, help='path to heart rate CSV timeseries')
     parser.add_argument('-e', '--end_time', type=hms_str2delta, required=True, help='timestamp to stop rolling at')
     parser.add_argument('-f', '--frequency', type=int, default=1, help='number of seconds to slide window each time')
-    parser.add_argument('-r', '--raw', action='store_true', help='use raw heart rate instead of pace:HR')
     parser.add_argument('-s', '--start_time', type=hms_str2delta, required=True, help='timestamp to begin rolling from')
     parser.add_argument('-w', '--window', type=int, default=30, help='number of minutes for each half of the test')
     args = parser.parse_args()
 
-    stats = rolling_aet(**vars(args))
-    print(f'Results from {len(stats["drift"]):,} windows using {"raw HR" if args.raw else "pace/HR"}')
-    avg_drift = mean(stats['drift'])
-    print(f'Successfull test: {0 < avg_drift < 5} ({avg_drift:+.2f}% drift)')
-    print(f'AeT: {mean(stats["aet"]):.2f} +/- {stdev(stats["aet"]):.2f} bpm')
+    analyzer = Analyzer(args.window, args.frequency)
+    stats = analyzer.rolling_aet(args.csv_path, args.start_time, args.end_time)
+    print_summary(stats)
