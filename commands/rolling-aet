@@ -43,20 +43,30 @@ def print_summary(combined):
     :param [dict] combined: Matching the return format of ``Analyzer.rolling_aet()``
     :return None: Prints to console
     """
-    summary = PrettyTable(field_names=['Method', 'Drift (%)', 'Successful', 'Pace @ AeT'])
-    raw_aet = combined[0]["stats"]["aet"]
-    summary.title = f'Results from {len(raw_aet):,} windows: AeT {mean(raw_aet):.2f} +/- {stdev(raw_aet):.2f} bpm'
+
+    # Table header and title
+    summary = PrettyTable(field_names=['Method', 'AeT Drift (%)', 'Pace Drift (%)', 'Pace @ AeT', 'Successful'])
+    aet_start = combined[0]['stats']['aet']['start']
+    summary.title = f'Results from {len(aet_start):,} windows: AeT {mean(aet_start):.2f} +/- {stdev(aet_start):.2f} bpm'
+
+    # One row per calculation method
     for method in combined:
         stats = method['stats']
-        avg_drift = mean(stats['drift'])
-        spacer = '' if avg_drift < 0 else ' '
-        pace_str = f'{mean(stats["pace"]):.2f} +/- {stdev(stats["pace"]):.2f} ' if len(stats['pace']) > 0 else ''
-        pace_str += method['units']
-        summary.add_row([
+        avg_aet_drift = mean(stats['aet']['drift'])
+        row = [
             method['name'].title(),
-            f'{spacer}{avg_drift:.2f} +/- {stdev(stats["drift"]):.2f}',
-            0 < avg_drift < 5,
-            pace_str])
+            f'{avg_aet_drift:>5.2f} +/- {stdev(stats["aet"]["drift"]):.2f}']
+        if method['units'] is not None:
+            avg_pace_drift = mean(stats['pace']['drift'])
+            pace_start = stats['pace']['start']
+            row.extend([
+                f'{avg_pace_drift:>5.2f} +/- {stdev(stats["pace"]["drift"]):.2f}',
+                f'{mean(pace_start):.2f} +/- {stdev(pace_start):.2f} {method["units"]}'])
+        else:
+            avg_pace_drift = 0
+            row.extend(['NA', 'NA'])
+        row.append(0 < avg_aet_drift < 5 and -5 < avg_pace_drift < 5)
+        summary.add_row(row)
     print(summary)
 
 
@@ -71,7 +81,7 @@ class Analyzer:
                 'config': {
                     'drift': 'heart_rate',
                     'pace': None},
-                'units': 'NA'},
+                'units': None},
             'speed': {
                 'name': 'hr/speed',
                 'config': {
@@ -92,24 +102,38 @@ class Analyzer:
         """Calculate AeT related stats using different methods
 
         :param pd.DataFrame relevant: Subsection of the workout to analyze
-        :param str drift: Column name to calculate drift on
+        :param str drift: Column name to measure the drift of
         :param str pace: Column name to use for mean pace
         :return dict stats: Values are lists with one element for each window
         """
 
+        def get_drift(series, first_half, second_half):
+            """Calculate percent drift between halves
+
+            :param pd.Series series: Data points to compare
+            :param slice first_half: Indices for the first half of the test
+            :param slice second_half: Indices for the second half of the test
+            :return float drift: Percent increase from first to second half
+            """
+            first_avg = series[first_half].mean()
+            second_avg = series[second_half].mean()
+            drift = (second_avg - first_avg) / first_avg * 100
+            return drift
+
         start_idx = 0
-        stats = {'pace': [], 'drift': [], 'aet': []}
+        stats = {
+            'aet': {'start': [], 'drift': []},
+            'pace': {'start': [], 'drift': []}}
         window_seconds = self.window * 60
         num_required_rows = window_seconds * 2
         while start_idx + num_required_rows < len(relevant):
             first_half = slice(start_idx, start_idx + window_seconds)
             second_half = slice(start_idx + window_seconds, start_idx + 2*window_seconds)
-            first_avg = relevant[drift][first_half].mean()
-            second_avg = relevant[drift][second_half].mean()
-            stats['drift'].append((second_avg - first_avg) / first_avg * 100)
-            stats['aet'].append(relevant.heart_rate[first_half].mean())
+            stats['aet']['start'].append(relevant.heart_rate[first_half].mean())
+            stats['aet']['drift'].append(get_drift(relevant[drift], first_half, second_half))
             if pace is not None:
-                stats['pace'].append(relevant[pace][first_half].mean())
+                stats['pace']['start'].append(relevant[pace][first_half].mean())
+                stats['pace']['drift'].append(get_drift(relevant[pace], first_half, second_half))
             start_idx += self.frequency
         return stats
 
