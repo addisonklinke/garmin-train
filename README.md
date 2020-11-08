@@ -33,6 +33,7 @@ ls commands/* | xargs -I {} sh -c 'sudo chmod +x {}; sudo ln -s $(realpath {}) /
 2. Convert the Garmin files into a CSV
 3. Define a time range to analyze the CSV data for aerobic threshold (AeT) calculations
 
+## CSV Conversion
 
 Starting in the folder with your downloaded activity files
 
@@ -54,7 +55,9 @@ Use the `activity2csv` command to perform the conversion
 user@linux:~/Downloads$ activity2csv -g -l US/Mountain -n myActivity 5633299714.*
 ```
 
-Analyze the CSV data
+## AeT Analysis
+
+Use the `rolling-aet` command along with your newly converted CSV file
 
 * Start and end times can use seconds-level precision if desired
 * By default, tests use a 1-second rolling window with 30 minute halves.
