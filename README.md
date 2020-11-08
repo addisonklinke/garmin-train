@@ -59,18 +59,25 @@ Analyze the CSV data
 * Start and end times can use seconds-level precision if desired
 * By default, tests use a 1-second rolling window with 30 minute halves.
   Either of these can be adjusted with the `-f` and `-w` flags, respectively
-* Read more about the theory behind the AeT drift test in The Uphill Athelte's
+* Read more about the steps for conducting an AeT drift test in The Uphill Athelte's
   [article](https://www.uphillathlete.com/heart-rate-drift/)
+* In an ideal test the pace is held constant, which means the drift in HR/Speed ratio will be identical to the drift in
+  raw heart rate. However, if the average pace
+    * Drifts higher: the HR/Speed drift will be *LOWER* than the raw HR drift.
+      This indicates you were able to speed up while maintaining the same HR drift, so at a constant pace your HR drift
+      would be lower
+    * Drifts lower: the HR/Speed drift will be *HIGHER* than the raw HR drift.
+      This indicates you could not keep up the same pace and had to slow down in order to attain the target HR drift
 
 ```
 user@linux:~/Downloads$ rolling-aet -s HH:MM -e HH:MM yyyymmdd-myActivity.csv
-+------------------------------------------------------------------------+
-|            Results from 59 windows: AeT 105.22 +/- 0.08 bpm            |
-+--------------+----------------+------------+---------------------------+
-|    Method    |   Drift (%)    | Successful |         Pace @ AeT        |
-+--------------+----------------+------------+---------------------------+
-|     Raw      |  0.69 +/- 0.12 |    True    |             NA            |
-|   Hr/Speed   | -3.70 +/- 0.86 |   False    |     3.94 +/- 0.02 mph     |
-| Hr/Elevation | -7.00 +/- 0.29 |   False    | 1231.84 +/- 12.81 ft/hour |
-+--------------+----------------+------------+---------------------------+
++-----------------------------------------------------------------------------------------+
+|                     Results from 59 windows: AeT 105.22 +/- 0.08 bpm                    |
++--------------+----------------+----------------+---------------------------+------------+
+|    Method    | AeT Drift (%)  | Pace Drift (%) |         Pace @ AeT        | Successful |
++--------------+----------------+----------------+---------------------------+------------+
+|     Raw      |  0.69 +/- 0.12 |       NA       |             NA            |    True    |
+|   Hr/Speed   | -3.70 +/- 0.86 |  6.31 +/- 1.03 |     3.94 +/- 0.02 mph     |   False    |
+| Hr/Elevation | -7.00 +/- 0.29 |  2.44 +/- 1.94 | 1231.84 +/- 12.81 ft/hour |   False    |
++--------------+----------------+----------------+---------------------------+------------+
 ```
