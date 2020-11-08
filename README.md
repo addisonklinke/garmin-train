@@ -62,7 +62,7 @@ Analyze the CSV data
 * Read more about the theory behind the AeT drift test in The Uphill Athelte's
   [article](https://www.uphillathlete.com/heart-rate-drift/)
 
-```bash
+```
 user@linux:~/Downloads$ rolling-aet -s HH:MM -e HH:MM yyyymmdd-myActivity.csv
 +------------------------------------------------------------------------+
 |            Results from 59 windows: AeT 105.22 +/- 0.08 bpm            |
