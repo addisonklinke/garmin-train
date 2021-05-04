@@ -18,7 +18,7 @@ Python utilities for handling with Garmin workout data
 git clone https://github.com/addisonklinke/garmin-train.git
 cd garmin-train
 pip install -r requirements.txt
-ls commands/* | xargs -I {} sh -c 'sudo chmod +x {}; sudo ln -s $(realpath {}) /usr/local/bin;'
+sudo python3 install.py --method symlink
 ```
 
 ## Usage
