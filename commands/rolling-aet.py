@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 
 from argparse import ArgumentParser, ArgumentTypeError, ArgumentDefaultsHelpFormatter
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from statistics import mean, stdev
 import pandas as pd
 from prettytable import PrettyTable
@@ -98,10 +98,11 @@ class Analyzer:
             'm/s_ft/hr': 3.28084 * 3600,
             'm/s_mph': 3600 / 1609.34}
 
-    def extract_stats(self, relevant, drift, pace):
+    def extract_stats(self, relevant, window_seconds, drift, pace):
         """Calculate AeT related stats using different methods
 
         :param pd.DataFrame relevant: Subsection of the workout to analyze
+        :param int window_seconds: Number of seconds in each half of the test
         :param str drift: Column name to measure the drift of
         :param str pace: Column name to use for mean pace
         :return dict stats: Values are lists with one element for each window
@@ -124,7 +125,7 @@ class Analyzer:
         stats = {
             'aet': {'start': [], 'drift': []},
             'pace': {'start': [], 'drift': []}}
-        window_seconds = min(self.window * 60, int(len(relevant)/2) - 1)
+
         num_required_rows = window_seconds * 2
         while start_idx + num_required_rows < len(relevant):
             first_half = slice(start_idx, start_idx + window_seconds)
@@ -182,11 +183,19 @@ class Analyzer:
             relevant = relevant[relevant.rolling_mph < max_elev]
             print(f'Removed {num_relevant - len(relevant)} seconds > {max_speed} ft/hr')
 
+        # Determine if requested window size is still feasible post-filtering
+        window_seconds = self.window * 60
+        available_window = int(len(relevant)/2) - 1
+        if available_window < window_seconds:
+            window_seconds = available_window
+            window_str = str(timedelta(seconds=available_window)).split(':', maxsplit=1)[1]
+            print(f'Window size limited to {window_str} based on available data')
+
         # Calculate AeT for each metric in windows
         combined = []
         for m in metrics:
             config = m.pop('config')
-            combined.append({'stats': self.extract_stats(relevant, **config), **m})
+            combined.append({'stats': self.extract_stats(relevant, window_seconds, **config), **m})
         return combined
 
 
