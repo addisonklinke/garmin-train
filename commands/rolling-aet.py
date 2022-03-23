@@ -137,7 +137,7 @@ class Analyzer:
             start_idx += self.frequency
         return stats
 
-    def rolling_aet(self, csv_path, start_time, end_time):
+    def rolling_aet(self, csv_path, start_time, end_time, max_speed=None, max_elev=None):
         """See argparse descriptions below"""
 
         # Load and validate data
@@ -163,9 +163,24 @@ class Analyzer:
 
         # Add time-base index and filter range
         df.set_index(pd.TimedeltaIndex(df.activity), inplace=True)
-        relevant = df[(df.index > start_time) & (df.index < end_time)]
+        relevant = df[(df.index > start_time) & (df.index < end_time)].copy()
         if len(relevant) == 0:
             raise RuntimeError(f'No data found between {start_time}-{end_time}')
+        num_relevant = len(relevant)
+
+        # Remove any outliers by average speed (to avoid brief downhill sections skewing results)
+        # Everything from this point forward works on integer indexing only, so timestamps don't need to be contiguous
+        rolling_sec = 5
+        if max_speed is not None:
+            assert 'mph' in relevant.columns, 'mph column required to filter by max speed'
+            relevant['rolling_mph'] = relevant.mph.rolling(rolling_sec).mean()
+            relevant = relevant[relevant.rolling_mph < max_speed]  # FIXME setting on a copy
+            print(f'Removed {num_relevant - len(relevant)} seconds > {max_speed} mph')
+        if max_elev is not None:
+            assert 'ft_hour' in relevant.columns, 'ft_hour column required to filter by max elevation gain rate'
+            relevant['rolling_ft_hour'] = relevant.ft_hour.rolling(rolling_sec).mean()
+            relevant = relevant[relevant.rolling_mph < max_elev]
+            print(f'Removed {num_relevant - len(relevant)} seconds > {max_speed} ft/hr')
 
         # Calculate AeT for each metric in windows
         combined = []
@@ -185,8 +200,10 @@ if __name__ == '__main__':
     parser.add_argument('-f', '--frequency', type=int, default=1, help='number of seconds to slide window each time')
     parser.add_argument('-s', '--start_time', type=hms_str2delta, required=True, help='timestamp to begin rolling from')
     parser.add_argument('-w', '--window', type=int, default=30, help='number of minutes for each half of the test')
+    parser.add_argument('--max_elev', type=float, help='max rolling elevation gain (ft/hr) to exclude times from AeT')
+    parser.add_argument('--max_speed', type=float, help='max rolling speed (mph) to exclude times from AeT')
     args = parser.parse_args()
 
     analyzer = Analyzer(args.window, args.frequency)
-    stats = analyzer.rolling_aet(args.csv_path, args.start_time, args.end_time)
+    stats = analyzer.rolling_aet(args.csv_path, args.start_time, args.end_time, args.max_speed, args.max_elev)
     print_summary(stats)
