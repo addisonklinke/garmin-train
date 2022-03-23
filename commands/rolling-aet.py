@@ -175,7 +175,7 @@ class Analyzer:
         if max_speed is not None:
             assert 'mph' in relevant.columns, 'mph column required to filter by max speed'
             relevant['rolling_mph'] = relevant.mph.rolling(rolling_sec).mean()
-            relevant = relevant[relevant.rolling_mph < max_speed]  # FIXME setting on a copy
+            relevant = relevant[relevant.rolling_mph < max_speed]
             print(f'Removed {num_relevant - len(relevant)} seconds > {max_speed} mph')
         if max_elev is not None:
             assert 'ft_hour' in relevant.columns, 'ft_hour column required to filter by max elevation gain rate'
