@@ -124,7 +124,7 @@ class Analyzer:
         stats = {
             'aet': {'start': [], 'drift': []},
             'pace': {'start': [], 'drift': []}}
-        window_seconds = self.window * 60
+        window_seconds = min(self.window * 60, int(len(relevant)/2) - 1)
         num_required_rows = window_seconds * 2
         while start_idx + num_required_rows < len(relevant):
             first_half = slice(start_idx, start_idx + window_seconds)
@@ -199,7 +199,7 @@ if __name__ == '__main__':
     parser.add_argument('-e', '--end_time', type=hms_str2delta, required=True, help='timestamp to stop rolling at')
     parser.add_argument('-f', '--frequency', type=int, default=1, help='number of seconds to slide window each time')
     parser.add_argument('-s', '--start_time', type=hms_str2delta, required=True, help='timestamp to begin rolling from')
-    parser.add_argument('-w', '--window', type=int, default=30, help='number of minutes for each half of the test')
+    parser.add_argument('-w', '--window', type=int, default=30, help='max minutes for each half of the test')
     parser.add_argument('--max_elev', type=float, help='max rolling elevation gain (ft/hr) to exclude times from AeT')
     parser.add_argument('--max_speed', type=float, help='max rolling speed (mph) to exclude times from AeT')
     args = parser.parse_args()
