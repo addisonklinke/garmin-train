@@ -64,6 +64,10 @@ Use the `rolling-aet` command along with your newly converted CSV file
   Either of these can be adjusted with the `-f` and `-w` flags, respectively
 * Read more about the steps for conducting an AeT drift test in The Uphill Athelte's
   [article](https://www.uphillathlete.com/heart-rate-drift/)
+    * Sometimes outdoor courses have short downhill section(s) which should be ignored.
+      This can be accomplished via one of the `--max_speed/elev` flags which will ignore times when the
+      rolling (5-second) pace is greater than a threshold.
+      You should pick the threshold by noting the live pace on your watch during these sections
 * In an ideal test the pace is held constant, which means the drift in HR/Speed ratio will be identical to the drift in
   raw heart rate. However, if the average pace
     * Drifts higher: the HR/Speed drift will be *LOWER* than the raw HR drift.
