@@ -4,7 +4,7 @@ Python utilities for handling with Garmin workout data
 
 ## Prequisites
 
-* Python3
+* Python 3.12
 * Linux
 
 ## Installation
