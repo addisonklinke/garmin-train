@@ -64,7 +64,7 @@ class Converter:
             gaps = deltas[deltas > timedelta(seconds=1)]
             if len(gaps) > 0:
                 print(f'Found {len(gaps)} gaps in timeseries data')
-            for i, g in gaps.iteritems():
+            for i, g in gaps.items():
                 gap_start = datetime.strftime(combined.timestamp[i - 1], "%I:%M:%S %p")
                 print(f'\t* {gap_start}: {str(g.to_pytimedelta())}'.expandtabs(4))
         return combined
